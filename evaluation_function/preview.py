@@ -22,7 +22,4 @@ def preview_function(response: Any, params: Params) -> Result:
     split into many) is entirely up to you.
     """
 
-    try:
-        return Result(preview=Preview(sympy=response))
-    except Exception as e:
-        return Result(preview=Preview(feedback=str(e)))
+    return Result(preview=Preview(feedback=response))

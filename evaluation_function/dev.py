@@ -1,23 +1,35 @@
-import sys
-
-from lf_toolkit.shared.params import Params
+import argparse
+import json
 
 from .evaluation import evaluation_function
+
+DEFAULT_PARAMS = {
+    "model": "openai/gpt-4o-mini",
+    "main_prompt": "You are evaluating a student's answer to the question '{{question}}'. The correct answer is '{{answer}}'. Output only 'True' if the student's answer is correct, or 'False' if it is incorrect.",
+    "default_prompt": "Only output 'True' or 'False'.",
+    "feedback_prompt": "Provide one sentence of feedback explaining why the student's answer was right or wrong.",
+    "question": "",
+}
 
 def dev():
     """Run the evaluation function from the command line for development purposes.
 
-    Usage: python -m evaluation_function.dev <answer> <response>
+    Usage: python -m evaluation_function.dev <response> <answer> [--model MODEL] [--params JSON]
     """
-    if len(sys.argv) < 3:
-        print("Usage: python -m evaluation_function.dev <answer> <response>")
-        return
-    
-    answer = sys.argv[1]
-    response = sys.argv[2]
+    parser = argparse.ArgumentParser(description="Test the evaluation function locally.")
+    parser.add_argument("response", help="The student's response")
+    parser.add_argument("answer", help="The correct answer")
+    parser.add_argument("--model", default=None, help="OpenRouter model ID (overrides params)")
+    parser.add_argument("--params", default=None, help="JSON string of params (merged over defaults)")
+    args = parser.parse_args()
 
-    result = evaluation_function(answer, response, Params())
+    params = dict(DEFAULT_PARAMS)
+    if args.params:
+        params.update(json.loads(args.params))
+    if args.model:
+        params["model"] = args.model
 
+    result = evaluation_function(args.response, args.answer, params)
     print(result.to_dict())
 
 if __name__ == "__main__":
