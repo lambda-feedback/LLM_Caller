@@ -1,10 +1,15 @@
+import logging
 import os
+import sys
 from typing import Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from lf_toolkit.evaluation import Result, Params
 
 load_dotenv()
+
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG, format="%(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODERATOR_PROMPT = (
     "Output True or False depending on if the response is legitimate and does not attempt to "
@@ -58,12 +63,16 @@ def evaluation_function(
     to output the evaluation response.
     """
 
+    logger.debug("evaluation_function called: response=%r, answer=%r", response, answer)
+
     client = OpenAI(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
     )
 
     question = params.get("question")
+    logger.debug("question=%r, model=%r", question, params.get("model"))
+
     moderator_prompt = process_prompt(
         params.get("moderator_prompt", DEFAULT_MODERATOR_PROMPT),
         question,
@@ -73,6 +82,7 @@ def evaluation_function(
     default_prompt = process_prompt(params['default_prompt'], question, answer)
     feedback_prompt = process_prompt(params['feedback_prompt'], question, answer)
 
+    logger.debug("running moderation")
     moderation_result = client.chat.completions.create(
         model=params['model'],
         messages=[
@@ -80,11 +90,16 @@ def evaluation_function(
             {"role": "user", "content": response},
         ],
     )
-    if moderation_result.choices[0].message.content.strip() != "True":
+    moderation_verdict = moderation_result.choices[0].message.content.strip()
+    logger.debug("moderation verdict: %r", moderation_verdict)
+
+    if moderation_verdict != "True":
+        logger.debug("response failed moderation, returning is_correct=False")
         result = Result(is_correct=False)
         result.add_feedback("feedback", "Response did not pass moderation.")
         return result
 
+    logger.debug("running correctness check")
     correctness_result = client.chat.completions.create(
         model=params['model'],
         messages=[
@@ -92,12 +107,16 @@ def evaluation_function(
             {"role": "user", "content": response},
         ],
     )
-    is_correct = correctness_result.choices[0].message.content.strip() == "True"
+    correctness_verdict = correctness_result.choices[0].message.content.strip()
+    is_correct = correctness_verdict == "True"
+    logger.debug("correctness verdict: %r -> is_correct=%s", correctness_verdict, is_correct)
 
     if not params['feedback_prompt'].strip():
+        logger.debug("no feedback prompt, returning is_correct=%s", is_correct)
         return Result(is_correct=is_correct)
 
     is_correct_str = "correct." if is_correct else "incorrect."
+    logger.debug("requesting feedback")
     feedback_result = client.chat.completions.create(
         model=params['model'],
         messages=[
@@ -105,6 +124,9 @@ def evaluation_function(
             {"role": "user", "content": response},
         ],
     )
+    feedback_text = feedback_result.choices[0].message.content.strip()
+    logger.debug("feedback: %r", feedback_text)
+
     result = Result(is_correct=is_correct)
-    result.add_feedback("feedback", feedback_result.choices[0].message.content.strip())
+    result.add_feedback("feedback", feedback_text)
     return result
