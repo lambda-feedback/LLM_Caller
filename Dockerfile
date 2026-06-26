@@ -19,11 +19,11 @@ ENV VIRTUAL_ENV=/app/.venv \
 
 COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 
-# Precompile python files for faster startup
-RUN python -m compileall -q .
-
 # Copy the evaluation function to the app directory
 COPY evaluation_function ./evaluation_function
+
+# Precompile python files for faster startup
+RUN python -m compileall -q .
 
 # Command to start the evaluation function with
 ENV FUNCTION_COMMAND="python"
@@ -32,6 +32,6 @@ ENV FUNCTION_COMMAND="python"
 ENV FUNCTION_ARGS="-m,evaluation_function.main"
 
 # The transport to use for the RPC server
-ENV FUNCTION_RPC_TRANSPORT="ipc"
+ENV FUNCTION_RPC_TRANSPORT="stdio"
 
 ENV LOG_LEVEL="debug"
