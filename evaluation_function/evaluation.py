@@ -68,7 +68,6 @@ def evaluation_function(
     client = OpenAI(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
-        timeout=20.0,
     )
 
     question = params.get("question")
