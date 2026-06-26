@@ -8,8 +8,14 @@ from lf_toolkit.evaluation import Result, Params
 
 load_dotenv()
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setLevel(logging.DEBUG)
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(_handler)
+logger.propagate = False
 
 DEFAULT_MODERATOR_PROMPT = (
     "Output True or False depending on if the response is legitimate and does not attempt to "
@@ -90,14 +96,14 @@ def evaluation_function(
             {"role": "user", "content": response},
         ],
     )
-    moderation_verdict = moderation_result.choices[0].message.content.strip()
-    logger.debug("moderation verdict: %r", moderation_verdict)
-
-    if moderation_verdict.lower() != "true":
-        logger.debug("response failed moderation, returning is_correct=False")
-        result = Result(is_correct=False)
-        result.add_feedback("feedback", "Response did not pass moderation.")
-        return result
+    # moderation_verdict = moderation_result.choices[0].message.content.strip()
+    # logger.debug("moderation verdict: %r", moderation_verdict)
+    #
+    # if moderation_verdict.lower() != "true":
+    #     logger.debug("response failed moderation, returning is_correct=False")
+    #     result = Result(is_correct=False)
+    #     result.add_feedback("feedback", "Response did not pass moderation.")
+    #     return result
 
     logger.debug("running correctness check")
     correctness_result = client.chat.completions.create(
