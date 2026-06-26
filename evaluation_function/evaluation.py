@@ -94,7 +94,7 @@ def evaluation_function(
     moderation_verdict = moderation_result.choices[0].message.content.strip()
     logger.debug("moderation verdict: %r", moderation_verdict)
 
-    if moderation_verdict != "True":
+    if moderation_verdict.lower() != "true":
         logger.debug("response failed moderation, returning is_correct=False")
         result = Result(is_correct=False)
         result.add_feedback("feedback", "Response did not pass moderation.")
@@ -109,7 +109,7 @@ def evaluation_function(
         ],
     )
     correctness_verdict = correctness_result.choices[0].message.content.strip()
-    is_correct = correctness_verdict == "True"
+    is_correct = correctness_verdict.lower() == "true"
     logger.debug("correctness verdict: %r -> is_correct=%s", correctness_verdict, is_correct)
 
     if not params['feedback_prompt'].strip():
