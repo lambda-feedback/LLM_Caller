@@ -113,14 +113,21 @@ def evaluation_function(
             {"role": "system", "content": combined_system},
             {"role": "user", "content": response},
         ],
+        response_format={"type": "json_object"},
     )
+
+    client.close()
+
     raw = combined_result.choices[0].message.content.strip()
     logger.debug("combined result raw: %r", raw)
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         logger.error("failed to parse combined result as JSON: %r", raw)
-        raise ValueError(f"Model did not return valid JSON: {e}") from e
+        result = Result(is_correct=False)
+        if include_feedback:
+            result.add_feedback("feedback", "Could not evaluate the response, please try again.")
+        return result
 
     passes_moderation = bool(data["passes_moderation"])
     if not passes_moderation:
