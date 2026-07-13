@@ -36,11 +36,9 @@ class TestEvaluationFunction(unittest.TestCase):
 
     def test_correct_response_with_feedback(self):
         moderation_payload = json.dumps({"passes_moderation": True})
-        correctness_payload = json.dumps({
-            "is_correct": True,
-            "feedback": "Well done, Paris is correct!",
-        })
-        patcher, _ = _patch_openai(moderation_payload, correctness_payload)
+        correctness_payload = json.dumps({"is_correct": True})
+        feedback_payload = json.dumps({"feedback": "Well done, Paris is correct!"})
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload, feedback_payload)
         try:
             result = evaluation_function("Paris", "Paris", BASE_PARAMS).to_dict()
         finally:
@@ -48,14 +46,15 @@ class TestEvaluationFunction(unittest.TestCase):
 
         self.assertTrue(result["is_correct"])
         self.assertIn("Paris", result["feedback"])
+        self.assertEqual(mock_client.chat.completions.create.call_count, 3)
 
     def test_incorrect_response_with_feedback(self):
         moderation_payload = json.dumps({"passes_moderation": True})
-        correctness_payload = json.dumps({
-            "is_correct": False,
-            "feedback": "Incorrect — the capital is Paris, not London.",
-        })
-        patcher, _ = _patch_openai(moderation_payload, correctness_payload)
+        correctness_payload = json.dumps({"is_correct": False})
+        feedback_payload = json.dumps(
+            {"feedback": "Incorrect — the capital is Paris, not London."}
+        )
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload, feedback_payload)
         try:
             result = evaluation_function("London", "Paris", BASE_PARAMS).to_dict()
         finally:
@@ -63,12 +62,13 @@ class TestEvaluationFunction(unittest.TestCase):
 
         self.assertFalse(result["is_correct"])
         self.assertIn("Paris", result["feedback"])
+        self.assertEqual(mock_client.chat.completions.create.call_count, 3)
 
     def test_no_feedback_when_prompt_empty(self):
         params = {**BASE_PARAMS, "feedback_prompt": ""}
         moderation_payload = json.dumps({"passes_moderation": True})
         correctness_payload = json.dumps({"is_correct": True})
-        patcher, _ = _patch_openai(moderation_payload, correctness_payload)
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload)
         try:
             result = evaluation_function("Paris", "Paris", params).to_dict()
         finally:
@@ -76,6 +76,36 @@ class TestEvaluationFunction(unittest.TestCase):
 
         self.assertTrue(result["is_correct"])
         self.assertFalse(result.get("feedback"))
+        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
+
+    def test_correctness_parse_failure(self):
+        moderation_payload = json.dumps({"passes_moderation": True})
+        patcher, mock_client = _patch_openai(moderation_payload, "not json")
+        try:
+            result = evaluation_function("Paris", "Paris", BASE_PARAMS).to_dict()
+        finally:
+            patcher.stop()
+
+        self.assertFalse(result["is_correct"])
+        self.assertEqual(
+            result["feedback"], "Could not evaluate the response, please try again."
+        )
+        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
+
+    def test_feedback_parse_failure_keeps_correctness(self):
+        moderation_payload = json.dumps({"passes_moderation": True})
+        correctness_payload = json.dumps({"is_correct": True})
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload, "not json")
+        try:
+            result = evaluation_function("Paris", "Paris", BASE_PARAMS).to_dict()
+        finally:
+            patcher.stop()
+
+        self.assertTrue(result["is_correct"])
+        self.assertEqual(
+            result["feedback"], "Could not evaluate the response, please try again."
+        )
+        self.assertEqual(mock_client.chat.completions.create.call_count, 3)
 
     def test_fails_moderation(self):
         moderation_payload = json.dumps({"passes_moderation": False})

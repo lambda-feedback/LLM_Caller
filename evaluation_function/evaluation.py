@@ -72,8 +72,6 @@ def evaluation_function(
     to output the evaluation response.
     """
 
-    logger.debug("evaluation_function called: response=%r, answer=%r", response, answer)
-
     client = OpenAI(
         api_key=os.environ.get("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
@@ -81,7 +79,7 @@ def evaluation_function(
     )
 
     question = params.get("question")
-    logger.debug("question=%r, model=%r", question, params.get("model"))
+    logger.debug("model=%r", params.get("model"))
 
     main_prompt = process_prompt(params['main_prompt'], question, answer)
     default_prompt = process_prompt(params['default_prompt'], question, answer)
@@ -102,11 +100,10 @@ def evaluation_function(
     )
 
     moderation_raw = moderation_result.choices[0].message.content.strip()
-    logger.debug("moderation result raw: %r", moderation_raw)
     try:
         moderation_data = json.loads(moderation_raw)
     except json.JSONDecodeError:
-        logger.error("failed to parse moderation result as JSON: %r", moderation_raw)
+        logger.error("failed to parse moderation result as JSON")
         client.close()
         result = Result(is_correct=False)
         if include_feedback:
@@ -122,20 +119,12 @@ def evaluation_function(
             result.add_feedback("feedback", "Response did not pass moderation.")
         return result
 
-    logger.debug("running correctness%s check", " + feedback" if include_feedback else "")
-
-    schema_fields = [
-        '"is_correct" (boolean, true if the student response is correct, false otherwise)',
-    ]
-    prompt_parts = [main_prompt, default_prompt]
-    if include_feedback:
-        prompt_parts.append(feedback_prompt)
-        schema_fields.append('"feedback" (string, feedback for the student)')
+    logger.debug("running correctness check")
 
     correctness_system = (
-        " ".join(prompt_parts)
-        + f' Output your response as a JSON object with exactly {len(schema_fields)} fields: '
-        + ", ".join(schema_fields) + "."
+        f"{main_prompt} {default_prompt}"
+        ' Output your response as a JSON object with exactly 1 field: '
+        '"is_correct" (boolean, true if the student response is correct, false otherwise).'
     )
     correctness_result = client.chat.completions.create(
         model=params['model'],
@@ -146,24 +135,51 @@ def evaluation_function(
         response_format={"type": "json_object"},
     )
 
-    client.close()
-
-    raw = correctness_result.choices[0].message.content.strip()
-    logger.debug("correctness result raw: %r", raw)
+    correctness_raw = correctness_result.choices[0].message.content.strip()
     try:
-        data = json.loads(raw)
+        correctness_data = json.loads(correctness_raw)
     except json.JSONDecodeError:
-        logger.error("failed to parse correctness result as JSON: %r", raw)
+        logger.error("failed to parse correctness result as JSON")
+        client.close()
         result = Result(is_correct=False)
         if include_feedback:
             result.add_feedback("feedback", "Could not evaluate the response, please try again.")
         return result
 
-    is_correct = bool(data["is_correct"])
+    is_correct = bool(correctness_data["is_correct"])
     logger.debug("is_correct=%s", is_correct)
+
+    if not include_feedback:
+        client.close()
+        return Result(is_correct=is_correct)
+
+    logger.debug("running feedback check")
+
+    verdict_note = "correct." if is_correct else "incorrect."
+    feedback_system = (
+        f"{main_prompt} The student response has been judged as {verdict_note} {feedback_prompt}"
+        ' Output your response as a JSON object with exactly 1 field: '
+        '"feedback" (string, feedback for the student).'
+    )
+    feedback_result = client.chat.completions.create(
+        model=params['model'],
+        messages=[
+            {"role": "system", "content": feedback_system},
+            {"role": "user", "content": response},
+        ],
+        response_format={"type": "json_object"},
+    )
+
+    client.close()
+
+    feedback_raw = feedback_result.choices[0].message.content.strip()
+    try:
+        feedback_data = json.loads(feedback_raw)
+        feedback_text = str(feedback_data["feedback"])
+    except (json.JSONDecodeError, KeyError):
+        logger.error("failed to parse feedback result as JSON")
+        feedback_text = "Could not evaluate the response, please try again."
+
     result = Result(is_correct=is_correct)
-    if include_feedback:
-        feedback_text = str(data.get("feedback", ""))
-        logger.debug("feedback=%r", feedback_text)
-        result.add_feedback("feedback", feedback_text)
+    result.add_feedback("feedback", feedback_text)
     return result
