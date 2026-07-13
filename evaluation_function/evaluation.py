@@ -44,6 +44,76 @@ def process_prompt(prompt, context, answer):
     return prompt
 
 
+FALLBACK_FEEDBACK = "Could not evaluate the response, please try again."
+
+
+def _request_json(client, model, system_prompt, response, step):
+    result = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": response},
+        ],
+        response_format={"type": "json_object"},
+    )
+    raw = result.choices[0].message.content.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        logger.error("failed to parse %s result as JSON", step)
+        return None
+
+
+def check_moderation(client, model, moderation_prompt, response):
+    logger.debug("running moderation check")
+    data = _request_json(client, model, moderation_prompt, response, "moderation")
+    if data is None:
+        return None
+    passes_moderation = bool(data["passes_moderation"])
+    logger.debug("passes_moderation=%s", passes_moderation)
+    return passes_moderation
+
+
+def check_correctness(client, model, correctness_decision, response):
+    logger.debug("running correctness check")
+    correctness_system = (
+        f"{correctness_decision}"
+        ' Output your response as a JSON object with exactly 1 field: '
+        '"is_correct" (boolean, true if the student response is correct, false otherwise).'
+    )
+    data = _request_json(client, model, correctness_system, response, "correctness")
+    if data is None:
+        return None
+    is_correct = bool(data["is_correct"])
+    logger.debug("is_correct=%s", is_correct)
+    return is_correct
+
+
+def generate_feedback(client, model, correctness_decision, feedback_guidance, is_correct, response):
+    logger.debug("running feedback check")
+    verdict_note = "correct." if is_correct else "incorrect."
+    feedback_system = (
+        f"{correctness_decision} The student response has been judged as {verdict_note} {feedback_guidance}"
+        ' Output your response as a JSON object with exactly 1 field: '
+        '"feedback" (string, feedback for the student).'
+    )
+    data = _request_json(client, model, feedback_system, response, "feedback")
+    if data is None:
+        return FALLBACK_FEEDBACK
+    try:
+        return str(data["feedback"])
+    except KeyError:
+        logger.error("feedback result missing 'feedback' field")
+        return FALLBACK_FEEDBACK
+
+
+def _failure_result(message, include_feedback):
+    result = Result(is_correct=False)
+    if include_feedback:
+        result.add_feedback("feedback", message)
+    return result
+
+
 def evaluation_function(
     response: Any,
     answer: Any,
@@ -78,107 +148,37 @@ def evaluation_function(
         max_retries=3,
     )
 
-    context = params.get("context")
-    logger.debug("model=%r", params.get("model"))
-
-    correctness_decision = process_prompt(params['correctness_decision'], context, answer)
-    feedback_guidance = process_prompt(params['feedback_guidance'], context, answer)
-    moderation_prompt = process_prompt(
-        params.get('moderation_prompt', DEFAULT_MODERATION_PROMPT), context, answer
-    )
-    include_feedback = bool(params['feedback_guidance'].strip())
-
-    logger.debug("running moderation check")
-    moderation_result = client.chat.completions.create(
-        model=params['model'],
-        messages=[
-            {"role": "system", "content": moderation_prompt},
-            {"role": "user", "content": response},
-        ],
-        response_format={"type": "json_object"},
-    )
-
-    moderation_raw = moderation_result.choices[0].message.content.strip()
     try:
-        moderation_data = json.loads(moderation_raw)
-    except json.JSONDecodeError:
-        logger.error("failed to parse moderation result as JSON")
-        client.close()
-        result = Result(is_correct=False)
-        if include_feedback:
-            result.add_feedback("feedback", "Could not evaluate the response, please try again.")
+        context = params.get("context")
+        model = params['model']
+        logger.debug("model=%r", model)
+
+        correctness_decision = process_prompt(params['correctness_decision'], context, answer)
+        feedback_guidance = process_prompt(params['feedback_guidance'], context, answer)
+        moderation_prompt = process_prompt(
+            params.get('moderation_prompt', DEFAULT_MODERATION_PROMPT), context, answer
+        )
+        include_feedback = bool(params['feedback_guidance'].strip())
+
+        passes_moderation = check_moderation(client, model, moderation_prompt, response)
+        if passes_moderation is None:
+            return _failure_result(FALLBACK_FEEDBACK, include_feedback)
+        if not passes_moderation:
+            logger.debug("response failed moderation")
+            return _failure_result("Response did not pass moderation.", include_feedback)
+
+        is_correct = check_correctness(client, model, correctness_decision, response)
+        if is_correct is None:
+            return _failure_result(FALLBACK_FEEDBACK, include_feedback)
+
+        if not include_feedback:
+            return Result(is_correct=is_correct)
+
+        feedback_text = generate_feedback(
+            client, model, correctness_decision, feedback_guidance, is_correct, response
+        )
+        result = Result(is_correct=is_correct)
+        result.add_feedback("feedback", feedback_text)
         return result
-
-    passes_moderation = bool(moderation_data["passes_moderation"])
-    if not passes_moderation:
-        logger.debug("response failed moderation")
+    finally:
         client.close()
-        result = Result(is_correct=False)
-        if include_feedback:
-            result.add_feedback("feedback", "Response did not pass moderation.")
-        return result
-
-    logger.debug("running correctness check")
-
-    correctness_system = (
-        f"{correctness_decision}"
-        ' Output your response as a JSON object with exactly 1 field: '
-        '"is_correct" (boolean, true if the student response is correct, false otherwise).'
-    )
-    correctness_result = client.chat.completions.create(
-        model=params['model'],
-        messages=[
-            {"role": "system", "content": correctness_system},
-            {"role": "user", "content": response},
-        ],
-        response_format={"type": "json_object"},
-    )
-
-    correctness_raw = correctness_result.choices[0].message.content.strip()
-    try:
-        correctness_data = json.loads(correctness_raw)
-    except json.JSONDecodeError:
-        logger.error("failed to parse correctness result as JSON")
-        client.close()
-        result = Result(is_correct=False)
-        if include_feedback:
-            result.add_feedback("feedback", "Could not evaluate the response, please try again.")
-        return result
-
-    is_correct = bool(correctness_data["is_correct"])
-    logger.debug("is_correct=%s", is_correct)
-
-    if not include_feedback:
-        client.close()
-        return Result(is_correct=is_correct)
-
-    logger.debug("running feedback check")
-
-    verdict_note = "correct." if is_correct else "incorrect."
-    feedback_system = (
-        f"{correctness_decision} The student response has been judged as {verdict_note} {feedback_guidance}"
-        ' Output your response as a JSON object with exactly 1 field: '
-        '"feedback" (string, feedback for the student).'
-    )
-    feedback_result = client.chat.completions.create(
-        model=params['model'],
-        messages=[
-            {"role": "system", "content": feedback_system},
-            {"role": "user", "content": response},
-        ],
-        response_format={"type": "json_object"},
-    )
-
-    client.close()
-
-    feedback_raw = feedback_result.choices[0].message.content.strip()
-    try:
-        feedback_data = json.loads(feedback_raw)
-        feedback_text = str(feedback_data["feedback"])
-    except (json.JSONDecodeError, KeyError):
-        logger.error("failed to parse feedback result as JSON")
-        feedback_text = "Could not evaluate the response, please try again."
-
-    result = Result(is_correct=is_correct)
-    result.add_feedback("feedback", feedback_text)
-    return result
