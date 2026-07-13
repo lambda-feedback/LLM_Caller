@@ -24,13 +24,14 @@ DEFAULT_CORRECTNESS_DECISION_WITH_CONTEXT = (
     "You are grading a student's response to the following question: {{context}} "
     "The correct answer is: {{answer}}. Judge the response as correct if it conveys the "
     "same meaning as the correct answer, allowing for different wording, notation, or "
-    "level of detail, and incorrect otherwise"
+    "level of detail. Respond with true if the response is correct, and false otherwise"
 )
 
 DEFAULT_CORRECTNESS_DECISION_NO_CONTEXT = (
     "You are grading a student's response. The correct answer is: {{answer}}. Judge the "
     "response as correct if it conveys the same meaning as the correct answer, allowing "
-    "for different wording, notation, or level of detail, and incorrect otherwise"
+    "for different wording, notation, or level of detail. Respond with true if the "
+    "response is correct, and false otherwise"
 )
 
 
