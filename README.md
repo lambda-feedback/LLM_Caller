@@ -4,13 +4,12 @@ An evaluation function for [Lambda Feedback](https://lambdafeedback.com) that us
 
 ## How It Works
 
-Each evaluation runs a **single** LLM call using the model specified in `configuration.params.model`. The call combines:
+Each evaluation runs up to **two sequential** LLM calls using the model specified in `configuration.params.model`:
 
-1. **Moderation** — checks the student response for prompt-injection or manipulation attempts.
-2. **Correctness** — judges whether the response is correct given the question and answer.
-3. **Feedback** — generates constructive feedback (skipped if `feedback_prompt` is empty).
+1. **Moderation** — checks the student response for prompt-injection or manipulation attempts. The model returns a JSON object with a single `passes_moderation` boolean. If it is `false`, evaluation short-circuits immediately: the response is marked incorrect and returned with the fixed message `"Response did not pass moderation."`, and the correctness/feedback call below is skipped entirely.
+2. **Correctness + feedback** — only runs if moderation passed. Judges whether the response is correct given the question and answer, and generates constructive feedback (skipped if `feedback_prompt` is empty). The model returns a JSON object with an `is_correct` boolean (plus a `feedback` string when feedback is requested).
 
-The model returns a single JSON object with `is_correct` and `passes_moderation` booleans (plus a `feedback` string when feedback is requested). If `passes_moderation` is `false`, the response is marked incorrect and returned with the fixed message `"Response did not pass moderation."`, regardless of what `is_correct`/`feedback` said. Combining everything into one call keeps evaluation fast and avoids the request timeouts that separate sequential calls used to cause.
+Splitting moderation into its own call means clearly manipulative submissions never pay for a correctness/feedback call. The worker's send timeout (`FUNCTION_WORKER_SEND_TIMEOUT` in the `Dockerfile`) is set to `90s` to give both sequential calls enough headroom.
 
 ## Configuration
 
