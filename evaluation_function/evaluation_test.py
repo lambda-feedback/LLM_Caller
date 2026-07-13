@@ -6,10 +6,9 @@ from .evaluation import evaluation_function
 
 BASE_PARAMS = {
     "model": "openai/gpt-4o-mini",
-    "question": "What is the capital of France?",
-    "main_prompt": "Is the student's answer '{{answer}}'? Output True or False.",
-    "default_prompt": "Only output 'True' or 'False'.",
-    "feedback_prompt": "Give one sentence of feedback.",
+    "context": "What is the capital of France?",
+    "correctness_decision": "Is the student's answer '{{answer}}'? Output True or False.",
+    "feedback_guidance": "Give one sentence of feedback.",
 }
 
 
@@ -65,7 +64,7 @@ class TestEvaluationFunction(unittest.TestCase):
         self.assertEqual(mock_client.chat.completions.create.call_count, 3)
 
     def test_no_feedback_when_prompt_empty(self):
-        params = {**BASE_PARAMS, "feedback_prompt": ""}
+        params = {**BASE_PARAMS, "feedback_guidance": ""}
         moderation_payload = json.dumps({"passes_moderation": True})
         correctness_payload = json.dumps({"is_correct": True})
         patcher, mock_client = _patch_openai(moderation_payload, correctness_payload)
@@ -121,8 +120,8 @@ class TestEvaluationFunction(unittest.TestCase):
         self.assertEqual(result["feedback"], "Response did not pass moderation.")
         self.assertEqual(mock_client.chat.completions.create.call_count, 1)
 
-    def test_fails_moderation_without_feedback_prompt(self):
-        params = {**BASE_PARAMS, "feedback_prompt": ""}
+    def test_fails_moderation_without_feedback_guidance(self):
+        params = {**BASE_PARAMS, "feedback_guidance": ""}
         moderation_payload = json.dumps({"passes_moderation": False})
         patcher, mock_client = _patch_openai(moderation_payload)
         try:
