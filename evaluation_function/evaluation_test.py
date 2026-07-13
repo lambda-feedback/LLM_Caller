@@ -120,6 +120,53 @@ class TestEvaluationFunction(unittest.TestCase):
         self.assertEqual(result["feedback"], "Response did not pass moderation.")
         self.assertEqual(mock_client.chat.completions.create.call_count, 1)
 
+    def test_uses_default_prompts_when_omitted(self):
+        params = {"model": "openai/gpt-4o-mini", "context": "What is the capital of France?"}
+        moderation_payload = json.dumps({"passes_moderation": True})
+        correctness_payload = json.dumps({"is_correct": True})
+        feedback_payload = json.dumps({"feedback": "Well done, Paris is correct!"})
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload, feedback_payload)
+        try:
+            result = evaluation_function("Paris", "Paris", params).to_dict()
+        finally:
+            patcher.stop()
+
+        self.assertTrue(result["is_correct"])
+        self.assertIn("Paris", result["feedback"])
+        self.assertEqual(mock_client.chat.completions.create.call_count, 3)
+
+    def test_uses_default_model_when_omitted(self):
+        params = {k: v for k, v in BASE_PARAMS.items() if k != "model"}
+        moderation_payload = json.dumps({"passes_moderation": True})
+        correctness_payload = json.dumps({"is_correct": True})
+        feedback_payload = json.dumps({"feedback": "Well done, Paris is correct!"})
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload, feedback_payload)
+        try:
+            evaluation_function("Paris", "Paris", params)
+        finally:
+            patcher.stop()
+
+        for call in mock_client.chat.completions.create.call_args_list:
+            self.assertEqual(call.kwargs["model"], "openai/gpt-4o-mini")
+
+    def test_default_correctness_decision_without_context(self):
+        params = {"model": "openai/gpt-4o-mini"}
+        moderation_payload = json.dumps({"passes_moderation": True})
+        correctness_payload = json.dumps({"is_correct": True})
+        feedback_payload = json.dumps({"feedback": "Well done, Paris is correct!"})
+        patcher, mock_client = _patch_openai(moderation_payload, correctness_payload, feedback_payload)
+        try:
+            result = evaluation_function("Paris", "Paris", params).to_dict()
+        finally:
+            patcher.stop()
+
+        self.assertTrue(result["is_correct"])
+        correctness_system_prompt = mock_client.chat.completions.create.call_args_list[1].kwargs[
+            "messages"
+        ][0]["content"]
+        self.assertNotIn("{{context}}", correctness_system_prompt)
+        self.assertNotIn("following question:  The correct answer", correctness_system_prompt)
+
     def test_fails_moderation_without_feedback_guidance(self):
         params = {**BASE_PARAMS, "feedback_guidance": ""}
         moderation_payload = json.dumps({"passes_moderation": False})

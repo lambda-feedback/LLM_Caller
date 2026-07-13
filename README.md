@@ -35,9 +35,9 @@ Requests are sent to `POST /evaluate` in µEd format.
 | `submission.type` | yes | Artefact type: `TEXT`, `CODE`, `MATH`, `MODEL` |
 | `submission.content.text` | yes (TEXT) | The student's response |
 | `task.referenceSolution.text` | yes | The reference answer (may be empty string) |
-| `configuration.params.model` | yes | OpenRouter model ID |
-| `configuration.params.correctness_decision` | yes | Describes the evaluation criteria used to decide correctness |
-| `configuration.params.feedback_guidance` | yes | Guidance for feedback generation; pass `""` to skip feedback |
+| `configuration.params.model` | no | OpenRouter model ID. Defaults to `openai/gpt-4o-mini` if omitted |
+| `configuration.params.correctness_decision` | no | Describes the evaluation criteria used to decide correctness. Falls back to a generic "compare response to answer" prompt if omitted (the fallback adapts depending on whether `context` is also provided) |
+| `configuration.params.feedback_guidance` | no | Guidance for feedback generation. Falls back to a generic constructive-feedback prompt if omitted; pass `""` to skip feedback entirely |
 | `configuration.params.context` | no | Question/purpose text; injected into prompts via `{{context}}` |
 | `configuration.params.moderation_prompt` | no | Overrides the default moderation prompt |
 
