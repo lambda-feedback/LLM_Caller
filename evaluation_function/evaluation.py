@@ -182,11 +182,18 @@ def evaluation_function(
         model = params.get('model', DEFAULT_MODEL)
         logger.debug("model=%r", model)
 
-        correctness_decision_raw = "{{context}}" + params.get(
+        correctness_decision_raw = params.get(
             'correctness_decision', default_correctness_decision(context)
         )
-        feedback_guidance_raw = "{{context}}" + params.get('feedback_guidance', DEFAULT_FEEDBACK_GUIDANCE)
 
+        if correctness_decision_raw != "":
+            correctness_decision_raw = "{{context}}" + correctness_decision_raw
+            
+        feedback_guidance_raw = params.get('feedback_guidance', DEFAULT_FEEDBACK_GUIDANCE)
+
+        if feedback_guidance_raw != "":
+            feedback_guidance_raw = "{{context}}" + feedback_guidance_raw
+            
         correctness_decision = process_prompt(correctness_decision_raw, context, answer)
         feedback_guidance = process_prompt(feedback_guidance_raw, context, answer)
         moderation_prompt = process_prompt(
