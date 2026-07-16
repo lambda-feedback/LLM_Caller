@@ -27,4 +27,5 @@ class TestPreviewFunction(unittest.TestCase):
 
         self.assertIn("latex", result)
         self.assertIn('sympy', result)
-        self.assertIsNotNone(result["preview"])
+        self.assertIsNotNone(result["latex"])
+        self.assertIsNotNone(result["sympy"])
