@@ -25,5 +25,6 @@ class TestPreviewFunction(unittest.TestCase):
         response, params = "A", Params()
         result = preview_function(response, params)
 
-        self.assertIn("preview", result)
+        self.assertIn("latex", result)
+        self.assertIn('sympy', result)
         self.assertIsNotNone(result["preview"])
