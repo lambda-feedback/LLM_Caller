@@ -5,10 +5,9 @@ from .evaluation import evaluation_function
 
 DEFAULT_PARAMS = {
     "model": "openai/gpt-4o-mini",
-    "main_prompt": "You are evaluating a student's answer to the question '{{question}}'. The correct answer is '{{answer}}'. Output only 'True' if the student's answer is correct, or 'False' if it is incorrect.",
-    "default_prompt": "Only output 'True' or 'False'.",
-    "feedback_prompt": "Provide one sentence of feedback explaining why the student's answer was right or wrong.",
-    "question": "",
+    "correctness_decision": "You are evaluating a student's answer to the question '{{context}}'. The correct answer is '{{answer}}'. Output only 'True' if the student's answer is correct, or 'False' if it is incorrect.",
+    "feedback_guidance": "Provide one sentence of feedback explaining why the student's answer was right or wrong.",
+    "context": "",
 }
 
 def dev():
