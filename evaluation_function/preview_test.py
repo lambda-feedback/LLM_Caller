@@ -25,7 +25,9 @@ class TestPreviewFunction(unittest.TestCase):
         response, params = "A", Params()
         result = preview_function(response, params)
 
-        self.assertIn("latex", result)
-        self.assertIn('sympy', result)
-        self.assertIsNotNone(result["latex"])
-        self.assertIsNotNone(result["sympy"])
+        self.assertIn('preview', result)
+        self.assertIsNotNone(result['preview'])
+        self.assertIn("latex", result['preview'])
+        self.assertIn('sympy', result['preview'])
+        self.assertIsNotNone(result["preview"]['latex'])
+        self.assertIsNotNone(result["preview"]['sympy'])
