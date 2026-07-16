@@ -22,4 +22,4 @@ def preview_function(response: Any, params: Params) -> Result:
     split into many) is entirely up to you.
     """
 
-    return Result(preview=Preview(feedback=response))
+    return Result(Preview(latex = response, sympy = response))
